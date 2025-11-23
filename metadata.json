@@ -1,0 +1,7 @@
+{
+  "name": "GymForce SaaS",
+  "description": "A modern, multi-tenant gym management platform with AI-powered insights, member portals, and attendance tracking.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
