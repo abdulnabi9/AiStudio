@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
-import { Member } from '../types';
-import { QrCode, Calendar, Clock, CreditCard, ChevronRight, MapPin, CheckCircle2, XCircle, Navigation, Loader2, BarChart2, Users, TrendingUp } from 'lucide-react';
-import { MOCK_MEMBERS, getGymCoordinates, updateGymLocation, getHourlyTraffic, HourlyTraffic } from '../services/mockData';
+import { Member, AttendanceLog } from '../types';
+import { QrCode, Calendar, Clock, CreditCard, ChevronRight, MapPin, CheckCircle2, XCircle, Navigation, Loader2, BarChart2, Users, TrendingUp, LogOut, History } from 'lucide-react';
+import { MOCK_MEMBERS, getGymCoordinates, updateGymLocation, getHourlyTraffic, HourlyTraffic, checkInMember, checkOutMember, getActiveCheckIn, getMemberHistory } from '../services/mockData';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface MemberPortalProps {
@@ -17,6 +18,16 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
   const [locationStatus, setLocationStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [distanceInfo, setDistanceInfo] = useState<{distance: number, userLat: number, userLng: number} | null>(null);
+
+  // Session State
+  const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkInTime, setCheckInTime] = useState<Date | null>(null);
+  const [currentAttendanceId, setCurrentAttendanceId] = useState<string | null>(null);
+  
+  // History State
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceLog[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Traffic State
   const [trafficData, setTrafficData] = useState<HourlyTraffic[]>([]);
@@ -57,7 +68,30 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
             setCurrentCrowd({ level: 'Closed / Quiet', color: 'text-slate-500', percentage: 0 });
         }
     });
-  }, []);
+
+    // Check for active session and load history from DB
+    if (currentUser && currentUser.id) {
+        checkActiveSession();
+        loadHistory();
+    }
+  }, [currentUser]);
+
+  const checkActiveSession = async () => {
+      const active = await getActiveCheckIn(currentUser.id);
+      if (active) {
+          setIsCheckedIn(true);
+          setCheckInTime(new Date(active.checkInTime));
+          setCurrentAttendanceId(active.id);
+          setLocationStatus('success');
+      }
+  };
+
+  const loadHistory = async () => {
+      setLoadingHistory(true);
+      const history = await getMemberHistory(currentUser.id);
+      setAttendanceHistory(history);
+      setLoadingHistory(false);
+  };
 
   // Haversine formula to calculate distance between two points in meters
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -91,7 +125,7 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
         
@@ -106,9 +140,20 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
 
         // Check if user is within the allowed radius
         if (distance <= gymCoords.radiusMeters) {
-          setLocationStatus('success');
-          setStatusMessage(`Welcome, ${currentUser.name.split(' ')[0]}! You are checked in.`);
-          // In a real app, initiate an API call here to save attendance
+          // Call Backend
+          const result = await checkInMember(currentUser.id);
+          
+          if (result.success) {
+              setLocationStatus('success');
+              setStatusMessage(`Welcome, ${currentUser.name.split(' ')[0]}! You are checked in.`);
+              setIsCheckedIn(true);
+              setCheckInTime(new Date());
+              if (result.id) setCurrentAttendanceId(result.id);
+              loadHistory(); // Refresh list
+          } else {
+              setLocationStatus('error');
+              setStatusMessage(`Database Error: ${result.error}`);
+          }
         } else {
           setLocationStatus('error');
           setStatusMessage(`You are ${Math.round(distance)}m away from the gym. You must be within ${gymCoords.radiusMeters}m to check in.`);
@@ -122,6 +167,46 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
         setStatusMessage('Unable to retrieve your location. Please check your permissions.');
       }
     );
+  };
+
+  const handleCheckOut = async () => {
+    // Note: We intentionally don't check location for checkout, assuming users might check out after leaving
+    if (window.confirm("Are you sure you want to check out?")) {
+        setIsCheckingOut(true);
+        let result: { success: boolean; error?: string } = { success: true };
+
+        if (currentAttendanceId) {
+            result = await checkOutMember(currentAttendanceId);
+        } else {
+            console.warn("No attendance ID found, clearing local state only.");
+        }
+        
+        setIsCheckingOut(false);
+
+        if (result.success) {
+            setIsCheckedIn(false);
+            setCheckInTime(null);
+            setCurrentAttendanceId(null);
+            setLocationStatus('idle');
+            setStatusMessage('');
+            setDistanceInfo(null);
+            loadHistory(); // Refresh list
+        } else {
+            const errorMsg = result.error || "Unknown error";
+            alert(`Failed to check out: ${errorMsg}. \n\nEnsure your Database policies allow updates.`);
+        }
+    }
+  };
+  
+  // Fallback function to clear local state if DB is stuck
+  const forceLocalSignOut = () => {
+     if(window.confirm("This will clear your 'Checked In' status locally but might not update the database if permissions are blocked. Continue?")) {
+        setIsCheckedIn(false);
+        setCheckInTime(null);
+        setCurrentAttendanceId(null);
+        setLocationStatus('idle');
+        setStatusMessage('');
+     }
   };
 
   const handleDemoSetLocation = () => {
@@ -170,18 +255,43 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
                   
                   {/* Location Check-in Box */}
                   <div className={`rounded-xl border-2 p-4 text-center transition-all ${
-                    locationStatus === 'success' ? 'border-green-500 bg-green-50' : 
+                    isCheckedIn ? 'border-green-500 bg-green-50' : 
                     locationStatus === 'error' ? 'border-red-200 bg-red-50' : 
                     'border-slate-100 bg-slate-50'
                   }`}>
                     
-                    {locationStatus === 'success' ? (
+                    {isCheckedIn ? (
                       <div className="py-2 animate-in zoom-in duration-300">
-                        <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
+                        <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2 border border-green-200">
                           <CheckCircle2 className="w-8 h-8 text-green-600" />
                         </div>
-                        <p className="text-green-800 font-bold">Checked In!</p>
-                        <p className="text-xs text-green-600 mt-1">{new Date().toLocaleTimeString()}</p>
+                        <p className="text-green-800 font-bold text-lg">Checked In</p>
+                        <p className="text-sm text-green-700 mt-1 mb-4 flex items-center justify-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {checkInTime?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
+                        
+                        <div className="space-y-2">
+                            <button 
+                                onClick={handleCheckOut}
+                                disabled={isCheckingOut}
+                                className="w-full py-2.5 bg-white border border-green-200 text-green-700 font-semibold rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {isCheckingOut ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" /> 
+                                ) : (
+                                    <LogOut className="w-4 h-4" />
+                                )}
+                                {isCheckingOut ? 'Signing Out...' : 'Check Out'}
+                            </button>
+
+                            <button
+                                onClick={forceLocalSignOut}
+                                className="text-xs text-slate-400 hover:text-slate-600 underline"
+                            >
+                                Force Local Sign Out (If Stuck)
+                            </button>
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -267,39 +377,69 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
                 </button>
             </div>
 
-            {/* Recent Activity */}
+            {/* Recent Activity (Real Data) */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Recent Check-ins</h3>
-                <div className="space-y-4">
-                    {/* If we just checked in successfully, show it at the top */}
-                    {locationStatus === 'success' && (
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-slate-800">Attendance History</h3>
+                    {loadingHistory && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
+                </div>
+                
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                    {/* Active Session Indicator */}
+                    {isCheckedIn && (
                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100 animate-in fade-in slide-in-from-left-2">
                           <div className="flex items-center gap-4">
                               <div className="p-2 bg-green-100 text-green-600 rounded-lg">
                                   <MapPin className="w-5 h-5" />
                               </div>
                               <div>
-                                  <p className="font-medium text-slate-900">Smart Check-in</p>
-                                  <p className="text-xs text-slate-500">Just now • Location Verified</p>
+                                  <p className="font-medium text-slate-900">Current Session</p>
+                                  <p className="text-xs text-slate-500">Checked In • {checkInTime?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                               </div>
                           </div>
+                          <span className="text-xs font-bold text-green-600 px-2 py-1 bg-green-100 rounded-full">LIVE</span>
                       </div>
                     )}
 
-                    {[1, 2, 3].map((i) => (
-                        <div key={i} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors border border-transparent hover:border-slate-100">
-                            <div className="flex items-center gap-4">
-                                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                                    <Clock className="w-5 h-5" />
+                    {/* Past History */}
+                    {attendanceHistory.length > 0 ? (
+                        attendanceHistory.map((log) => {
+                            const isCurrent = log.id === currentAttendanceId;
+                            if (isCurrent) return null; // Don't duplicate if shown above
+
+                            const checkIn = new Date(log.checkInTime);
+                            const checkOut = log.checkOutTime ? new Date(log.checkOutTime) : null;
+                            const duration = checkOut 
+                                ? Math.round((checkOut.getTime() - checkIn.getTime()) / (1000 * 60)) 
+                                : null;
+
+                            return (
+                                <div key={log.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg transition-colors border border-transparent hover:border-slate-100">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 bg-slate-100 text-slate-600 rounded-lg">
+                                            <History className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-slate-900">Gym Session</p>
+                                            <p className="text-xs text-slate-500">
+                                                {checkIn.toLocaleDateString()} • {checkIn.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                {checkOut && ` - ${checkOut.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {duration ? (
+                                        <span className="text-xs text-slate-400 font-medium">{duration} mins</span>
+                                    ) : (
+                                        <span className="text-xs text-orange-500 font-medium">No Check-out</span>
+                                    )}
                                 </div>
-                                <div>
-                                    <p className="font-medium text-slate-900">Gym Entry</p>
-                                    <p className="text-xs text-slate-500">Oct {28 - i}, 2023 • 5:30 PM</p>
-                                </div>
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-slate-400" />
-                        </div>
-                    ))}
+                            );
+                        })
+                    ) : (
+                        !isCheckedIn && (
+                            <p className="text-center text-slate-500 py-4 text-sm">No recent attendance history.</p>
+                        )
+                    )}
                 </div>
             </div>
         </div>
@@ -390,3 +530,4 @@ const MemberPortal: React.FC<MemberPortalProps> = ({ member }) => {
 };
 
 export default MemberPortal;
+    

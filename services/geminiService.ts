@@ -1,9 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { Member, AttendanceRecord } from '../types';
 
-// NOTE: In a real app, API keys should be handled via backend proxies.
-// For this demo, we assume process.env.API_KEY is available.
-const apiKey = process.env.API_KEY || ''; 
+// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+// We safely check if process is defined to prevent browser crashes.
+const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
 
 let ai: GoogleGenAI | null = null;
 
@@ -16,7 +16,7 @@ export const generateGymInsights = async (
   attendance: AttendanceRecord[]
 ): Promise<string> => {
   if (!ai) {
-    return "API Key not configured. Please set process.env.API_KEY to use AI features.";
+    return "API Key not configured. Please set API_KEY to use AI features.";
   }
 
   const activeCount = members.filter(m => m.status === 'ACTIVE').length;

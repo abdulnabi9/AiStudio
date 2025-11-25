@@ -1,19 +1,22 @@
+
 import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Users, CreditCard, TrendingUp, AlertTriangle, Sparkles } from 'lucide-react';
+import { Users, CreditCard, TrendingUp, AlertTriangle, Sparkles, BellRing, Calendar } from 'lucide-react';
 import { Member, AttendanceRecord } from '../types';
-import { getMembers, getAttendanceStats } from '../services/mockData';
+import { getMembers, getAttendanceStats, getUpcomingRenewals } from '../services/mockData';
 import { generateGymInsights } from '../services/geminiService';
 
 const Dashboard: React.FC = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [renewals, setRenewals] = useState<Member[]>([]);
   const [insights, setInsights] = useState<string>('');
   const [loadingInsights, setLoadingInsights] = useState(false);
 
   useEffect(() => {
     getMembers().then(setMembers);
     getAttendanceStats().then(setAttendance);
+    getUpcomingRenewals(7).then(setRenewals);
   }, []);
 
   const handleGenerateInsights = async () => {
@@ -96,6 +99,44 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Notifications Section: Upcoming Renewals */}
+      {renewals.length > 0 && (
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-3 mb-3">
+               <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                  <BellRing className="w-5 h-5" />
+               </div>
+               <h3 className="text-lg font-semibold text-amber-900">Upcoming Renewals (Next 7 Days)</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+               {renewals.map(member => (
+                  <div key={member.id} className="bg-white p-3 rounded-lg border border-amber-100 shadow-sm flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <img 
+                          src={member.photoUrl || `https://ui-avatars.com/api/?name=${member.name}`} 
+                          className="w-10 h-10 rounded-full bg-slate-100" 
+                          alt={member.name}
+                        />
+                        <div>
+                           <p className="font-medium text-slate-900 text-sm">{member.name}</p>
+                           <p className="text-xs text-slate-500">{member.membershipType}</p>
+                        </div>
+                     </div>
+                     <div className="text-right">
+                        <p className="text-xs font-bold text-amber-600 flex items-center justify-end gap-1">
+                           <Calendar className="w-3 h-3" />
+                           {new Date(member.nextDueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </p>
+                        <button className="text-[10px] text-blue-600 hover:underline mt-1">
+                           Remind
+                        </button>
+                     </div>
+                  </div>
+               ))}
+            </div>
+          </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart */}

@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Member, MembershipType, PlanCategory } from '../types';
-import { X, Save, AlertCircle, Upload, Image as ImageIcon, Trash2, Info } from 'lucide-react';
+import { X, Save, AlertCircle, Upload, Image as ImageIcon, Trash2, Info, Lock } from 'lucide-react';
 
 interface MemberFormData {
   name: string;
@@ -16,6 +15,7 @@ interface MemberFormData {
   age?: number;
   photoUrl?: string;
   notes?: string;
+  password?: string;
 }
 
 interface MemberFormProps {
@@ -60,7 +60,8 @@ const MemberForm: React.FC<MemberFormProps> = ({ initialData, onSubmit, onCancel
     height: undefined,
     age: undefined,
     photoUrl: '',
-    notes: ''
+    notes: '',
+    password: ''
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof MemberFormData, string>>>({});
@@ -81,7 +82,8 @@ const MemberForm: React.FC<MemberFormProps> = ({ initialData, onSubmit, onCancel
         height: initialData.height,
         age: initialData.age,
         photoUrl: initialData.photoUrl || '',
-        notes: initialData.notes || ''
+        notes: initialData.notes || '',
+        password: '' // Don't show password on edit
       });
     } else {
       // For new members, auto-calculate the initial next due date based on default values
@@ -291,17 +293,39 @@ const MemberForm: React.FC<MemberFormProps> = ({ initialData, onSubmit, onCancel
 
           <div className="border-t border-slate-100 pt-6"></div>
 
-          {/* Name */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => handleChange('name', e.target.value)}
-              className={`block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500 ${errors.name ? 'border-red-300' : 'border-slate-300'}`}
-              placeholder="John Doe"
-            />
-            {errors.name && <p className="mt-1 text-xs text-red-500 flex items-center"><AlertCircle className="w-3 h-3 mr-1"/>{errors.name}</p>}
+          {/* Name & Password (If new) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                className={`block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500 ${errors.name ? 'border-red-300' : 'border-slate-300'}`}
+                placeholder="John Doe"
+                />
+                {errors.name && <p className="mt-1 text-xs text-red-500 flex items-center"><AlertCircle className="w-3 h-3 mr-1"/>{errors.name}</p>}
+             </div>
+             
+             {/* Only show password field when creating a NEW member */}
+             {!initialData && (
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Default Password</label>
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Lock className="h-4 w-4 text-slate-400" />
+                        </div>
+                        <input
+                            type="text"
+                            value={formData.password}
+                            onChange={(e) => handleChange('password', e.target.value)}
+                            className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Optional (User can set later)"
+                        />
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">If left blank, user must 'Sign Up' to claim account.</p>
+                 </div>
+             )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

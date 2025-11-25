@@ -59,3 +59,11 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
   count: number;
 }
+
+export interface AttendanceLog {
+  id: string;
+  memberId: string;
+  checkInTime: string;
+  checkOutTime?: string;
+  date: string;
+}

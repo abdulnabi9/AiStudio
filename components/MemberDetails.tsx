@@ -1,14 +1,15 @@
 import React from 'react';
 import { Member } from '../types';
-import { X, Mail, Phone, Calendar, Dumbbell, Edit2 } from 'lucide-react';
+import { X, Mail, Phone, Calendar, Dumbbell, Edit2, Trash2 } from 'lucide-react';
 
 interface MemberDetailsProps {
   member: Member;
   onClose: () => void;
   onEdit: (member: Member) => void;
+  onDelete: () => void;
 }
 
-const MemberDetails: React.FC<MemberDetailsProps> = ({ member, onClose, onEdit }) => {
+const MemberDetails: React.FC<MemberDetailsProps> = ({ member, onClose, onEdit, onDelete }) => {
   // Helper for health status (reusing logic for consistency)
   const getHealthStatus = () => {
     if (!member.weight || !member.height) return null;
@@ -55,7 +56,14 @@ const MemberDetails: React.FC<MemberDetailsProps> = ({ member, onClose, onEdit }
                   className="flex items-center px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
                 >
                   <Edit2 className="w-3.5 h-3.5 mr-1.5" />
-                  Edit Profile
+                  Edit
+                </button>
+                <button
+                  onClick={onDelete}
+                  className="flex items-center px-3 py-1.5 text-sm font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors shadow-sm"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete
                 </button>
              </div>
           </div>
